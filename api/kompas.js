@@ -52,10 +52,14 @@ async function getData(category) {
 
         isi.each((i, e) => {
             const title = $('.article__list__title h3 a', e).text().replace("\n", "").trim();
+            let image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('data-src');
+            if(image_thumbnail == undefined){
+                image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('src');
+            }
+            
 
-
-            if (title != "") {
-                const image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('data-src');
+            if (title != "" && image_thumbnail != undefined) {
+                
                 var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
                 var time = $('.article__date', e).text().trim().replace(" WIB", "");
                 // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
