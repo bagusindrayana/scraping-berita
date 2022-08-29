@@ -159,3 +159,5 @@ app.get('/kompas/:cat/:read/:y/:m/:d/:id/:slug', async (req, res) => {
 app.listen(process.env.PORT || port, () => {
     console.log(`Web app listening on port ${port}`)
 });
+
+module.exports = app;
