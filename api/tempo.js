@@ -95,7 +95,7 @@ async function getDetail(category,slug) {
     try {
         const response = await axios.get(url);
         const $ = cheerio.load(response.data);
-        const _element_article = $(".main-left article.detail-artikel");
+        const _element_article = $(".main-left article.detail-artikel:not(.berikutnya)");
         const title = $(".detail-title h1.title",_element_article);
         const content = $("#isi",_element_article);
         $("script", content).remove();
