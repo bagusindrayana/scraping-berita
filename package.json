@@ -13,7 +13,6 @@
   "dependencies": {
     "axios": "^0.27.2",
     "cheerio": "^1.0.0-rc.12",
-    "chrono-node": "^2.4.1",
     "express": "^4.18.1",
     "moment": "^2.29.4"
   }
