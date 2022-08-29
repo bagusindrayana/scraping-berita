@@ -1,3 +1,15 @@
+## Instalasi
+- `npm install`
+- `npm start`
+
+## Library yang digunakan
+- axios
+- cheerio
+- express
+- moment
+
+## API
+
 ```json
 {
   "message": "Semua data hasil dari scraping",
