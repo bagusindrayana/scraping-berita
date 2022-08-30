@@ -165,7 +165,7 @@ async function getDetail(slug) {
         }
 
         const theTime = timeArr.join(" ").replace(" WIB", "");
-        let newTime = moment(theTime, 'dddd, Do MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
+        let newTime = moment(theTime, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
 
         let medias = [];
         const yts = $("iframe",content);
