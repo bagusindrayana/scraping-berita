@@ -68,7 +68,6 @@
         "/kompas/megapolitan",
         "/kompas/regional",
         "/kompas/nasional",
-        "/kompas/global",
         "/kompas/money",
         "/kompas/bola",
         "/kompas/tekno",

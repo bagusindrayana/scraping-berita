@@ -43,49 +43,40 @@ async function getData(category) {
     if (category == "") {
         url = base_url;
     }
-
+    var type = 0;
     let result = [];
+    var tryagain = false;
     try {
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
-        const isi = $(".col-bs10-7 .article__list.clearfix");
-
-        isi.each((i, e) => {
-            const title = $('.article__list__title h3 a', e).text().replace("\n", "").trim();
-            let image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('data-src');
-            if(image_thumbnail == undefined){
-                image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('src');
+        let response = await axios.get(url).catch((error) => {
+        
+            if (error.code == "ENOTFOUND") {
+                url = `https://www.kompas.com/${category.toLowerCase()}`;
+                tryagain = true;
             }
-            
-
-            if (title != "" && image_thumbnail != undefined) {
-                
-                var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-                var time = $('.article__date', e).text().trim().replace(" WIB", "");
-                // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-                // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-                const link = $('.article__list__title h3 a', e).attr('href');
-                const _url = new URL(link);
-                if (_url.hostname !== "www.kompas.id") {
-                    const _replace = "https://" + _url.hostname;
-                    const _arr_hostname = _url.hostname.split(".");
-                    let slug = (link != undefined) ? link.replace(_replace, "") : "";
-                    if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                        slug = _arr_hostname[0] + slug;
-                    } else if (slug.charAt(0) == "/") {
-                        slug = slug.slice(1);
-                    }
+            // Do something on error...
+        });
+        if(tryagain){
+            response = await axios.get(url);
+           
+        }
+        const $ = cheerio.load(response.data);
+        let isi = $(".col-bs10-7 .article__list.clearfix");
+        if (isi.length <= 0) {
+            type = 1;
+            isi = $(".row .article__grid");
 
 
-                    // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-                    result.push({
-                        title: title,
-                        image_thumbnail: image_thumbnail,
-                        image_full: image_full,
-                        time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
-                        link: link,
-                        slug: slug
-                    });
+        }
+        isi.each((i, e) => {
+            if (type == 0) {
+                const p = parse1($, e);
+                if (p != null) {
+                    result.push(p);
+                }
+            } else if (type == 1) {
+                const p = parse2($, e);
+                if (p != null) {
+                    result.push(p);
                 }
             }
         });
@@ -96,6 +87,92 @@ async function getData(category) {
         };
     }
     return result;
+}
+
+function parse1($, e) {
+    const title = $('.article__list__title h3 a', e).text().replace("\n", "").trim();
+    let image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('data-src');
+    if (image_thumbnail == undefined) {
+        image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('src');
+    }
+
+
+    if (title != "" && image_thumbnail != undefined) {
+
+        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
+        var time = $('.article__date', e).text().trim().replace(" WIB", "");
+        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
+        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
+        const link = $('.article__list__title h3 a', e).attr('href');
+        const _url = new URL(link);
+        if (_url.hostname !== "www.kompas.id") {
+            const _replace = "https://" + _url.hostname;
+            const _arr_hostname = _url.hostname.split(".");
+            let slug = (link != undefined) ? link.replace(_replace, "") : "";
+            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
+                slug = _arr_hostname[0] + slug;
+            } else if (slug.charAt(0) == "/") {
+                slug = slug.slice(1);
+            }
+
+
+            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
+            return {
+                title: title,
+                image_thumbnail: image_thumbnail,
+                image_full: image_full,
+                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
+                link: link,
+                slug: slug
+            };
+
+        }
+    }
+
+    return null;
+}
+
+function parse2($, e) {
+    const title = $('.article__box h3.article__title a', e).text().replace("\n", "").trim();
+    let image_thumbnail = $('.article__asset a img', e).attr('data-src');
+    if (image_thumbnail == undefined) {
+        image_thumbnail = $('.article__asset a img', e).attr('src');
+    }
+
+
+    if (title != "" && image_thumbnail != undefined) {
+
+        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
+        var time = $('.article__date', e).text().trim().replace(" WIB", "");
+        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
+        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
+        const link = $('.article__box h3.article__title a', e).attr('href');
+        const _url = new URL(link);
+        if (_url.hostname !== "www.kompas.id") {
+            const _replace = "https://" + _url.hostname;
+            const _arr_hostname = _url.hostname.split(".");
+            let slug = (link != undefined) ? link.replace(_replace, "") : "";
+            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
+                slug = _arr_hostname[0] + slug;
+            } else if (slug.charAt(0) == "/") {
+                slug = slug.slice(1);
+            }
+
+
+            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
+            return {
+                title: title,
+                image_thumbnail: image_thumbnail,
+                image_full: image_full,
+                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
+                link: link,
+                slug: slug
+            };
+
+        }
+    }
+
+    return null;
 }
 
 async function getDetail(category, slug) {
