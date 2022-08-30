@@ -88,7 +88,7 @@ async function getDetail(slug) {
         const image = $("#article a.glightbox img.wfull");
         const time = $("#article div.mt10 time");
         const theTime = time.attr('datetime').replace(" WIB", "");
-        let newTime = moment(theTime, 'dddd, Do MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
+        let newTime = moment(theTime, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
         let medias = [];
         const yts = $("figure iframe",content);
         yts.each((i, e) => {
