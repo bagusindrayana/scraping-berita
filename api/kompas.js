@@ -60,16 +60,17 @@ async function getData(category) {
            
         }
         const $ = cheerio.load(response.data);
-        let isi = $(".col-bs10-7 .article__list.clearfix");
+        let isi = $(".article__list.clearfix:not(.article__list--tv)");
         if (isi.length <= 0) {
             type = 1;
-            isi = $(".row .article__grid");
+            isi = $(".article__wrap__grid--flex .article__grid");
             if (isi.length <= 0) {
                 type = 2;
-                isi = $(".trenLatest__item");
+                isi = $(".trenLatest__item.clearfix");
             }
 
         }
+
         isi.each((i, e) => {
             if (type == 0) {
                 const p = parse1($, e);
