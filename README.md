@@ -68,6 +68,8 @@
         "/kompas/megapolitan",
         "/kompas/regional",
         "/kompas/nasional",
+        "/kompas/global",
+        "/kompas/money",
         "/kompas/bola",
         "/kompas/tekno",
         "/kompas/lifestyle",
@@ -75,6 +77,23 @@
         "/kompas/otomotif"
       ],
       "detail": "/kompas/:slug"
+    },
+    {
+      "name": "Liputan 6",
+      "all": "/liputan6",
+      "section": [
+        "/liputan6/news",
+        "/liputan6/crypto",
+        "/liputan6/saham",
+        "/liputan6/bisnis",
+        "/liputan6/bola",
+        "/liputan6/showbiz",
+        "/liputan6/tekno",
+        "/liputan6/cek-fakta",
+        "/liputan6/islami",
+        "/liputan6/regional"
+      ],
+      "detail": "/liputan6/:slug"
     }
   ]
 }

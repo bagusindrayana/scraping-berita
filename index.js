@@ -5,6 +5,7 @@ const tribunnews = require('./api/tribunnews');
 const cnnindonesia = require('./api/cnnindonesia');
 const tempo = require('./api/tempo');
 const kompas = require('./api/kompas');
+const liputan6 = require('./api/liputan6');
 
 app.get('/', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -74,6 +75,23 @@ app.get('/', async (req, res) => {
                     '/kompas/otomotif',
                 ],
                 detail: '/kompas/:slug'
+            },
+            {
+                name: 'Liputan 6',
+                all: '/liputan6',
+                section: [
+                    '/liputan6/news',
+                    '/liputan6/crypto',
+                    '/liputan6/saham',
+                    '/liputan6/bisnis',
+                    '/liputan6/bola',
+                    '/liputan6/showbiz',
+                    '/liputan6/tekno',
+                    '/liputan6/cek-fakta',
+                    '/liputan6/islami',
+                    '/liputan6/regional',
+                ],
+                detail: '/liputan6/:slug'
             }
         ]
     };
@@ -150,6 +168,27 @@ app.get('/kompas/:cat', async (req, res) => {
 
 app.get('/kompas/:cat/:read/:y/:m/:d/:id/:slug', async (req, res) => {
     var result = await kompas.getDetail(`${req.params.cat}`,`${req.params.read}/${req.params.y}/${req.params.m}/${req.params.d}/${req.params.id}/${req.params.slug}`);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result));
+});
+
+
+app.get('/liputan6', async (req, res) => {
+    var result = await liputan6.getData("");
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result));
+});
+
+app.get('/liputan6/:cat', async (req, res) => {
+    var result = await liputan6.getData(req.params.cat || "");
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result));
+});
+
+
+
+app.get('/liputan6/:cat/:read/:id/:slug', async (req, res) => {
+    var result = await liputan6.getDetail(`${req.params.cat}/${req.params.read}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(result));
 });
