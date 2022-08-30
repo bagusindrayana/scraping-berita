@@ -64,7 +64,10 @@ async function getData(category) {
         if (isi.length <= 0) {
             type = 1;
             isi = $(".row .article__grid");
-
+            if (isi.length <= 0) {
+                type = 2;
+                isi = $(".trenLatest__item");
+            }
 
         }
         isi.each((i, e) => {
@@ -75,6 +78,11 @@ async function getData(category) {
                 }
             } else if (type == 1) {
                 const p = parse2($, e);
+                if (p != null) {
+                    result.push(p);
+                }
+            } else if (type == 2) {
+                const p = parse3($, e);
                 if (p != null) {
                     result.push(p);
                 }
@@ -147,6 +155,49 @@ function parse2($, e) {
         // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
         // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
         const link = $('.article__box h3.article__title a', e).attr('href');
+        const _url = new URL(link);
+        if (_url.hostname !== "www.kompas.id") {
+            const _replace = "https://" + _url.hostname;
+            const _arr_hostname = _url.hostname.split(".");
+            let slug = (link != undefined) ? link.replace(_replace, "") : "";
+            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
+                slug = _arr_hostname[0] + slug;
+            } else if (slug.charAt(0) == "/") {
+                slug = slug.slice(1);
+            }
+
+
+            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
+            return {
+                title: title,
+                image_thumbnail: image_thumbnail,
+                image_full: image_full,
+                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
+                link: link,
+                slug: slug
+            };
+
+        }
+    }
+
+    return null;
+}
+
+function parse3($, e) {
+    const title = $('.trenLatest__box h3.trenLatest__title a', e).text().replace("\n", "").trim();
+    let image_thumbnail = $('.trenLatest__img a img', e).attr('data-src');
+    if (image_thumbnail == undefined) {
+        image_thumbnail = $('.trenLatest__img a img', e).attr('src');
+    }
+
+
+    if (title != "" && image_thumbnail != undefined) {
+
+        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
+        var time = $('.tren__date', e).text().trim().replace(" WIB", "");
+        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
+        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
+        const link = $('.trenLatest__box h3.trenLatest__title a', e).attr('href');
         const _url = new URL(link);
         if (_url.hostname !== "www.kompas.id") {
             const _replace = "https://" + _url.hostname;
