@@ -119,7 +119,7 @@ async function getDetail(slug) {
             'title': title.text().replace("\n", "").trim(),
             'content': content.text().replace("\n", "").trim(),
             'image': image.attr('src'),
-            'time': newTime,
+            'time': (newTime != "Invalid date")?newTime:theTime,
             'media': medias
         };
 

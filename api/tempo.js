@@ -147,7 +147,7 @@ async function getDetail(category,slug) {
             'title': title.text().replace("\n", "").trim(),
             'content': content.text().replace("\n", "").trim(),
             'image': image,
-            'time': newTime,
+            'time': (newTime != "Invalid date")?newTime:time,
             'media': medias
         };
 

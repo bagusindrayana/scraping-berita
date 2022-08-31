@@ -39,6 +39,7 @@ function getDateFromTimeAgo(timeString) {
 const base_url = "https://www.cnnindonesia.com";
 
 async function getData(category) {
+    moment.locale('id');
     const url = base_url + "/" + category.toLowerCase();
     let result = [];
     try {
@@ -147,7 +148,6 @@ async function getDetail(slug) {
 
 
         const image = $('#content .content_detail .media_artikel img').attr('src');
-        console.log(image);
         var img_url = new URL(image);
         var search_params = img_url.searchParams;
         search_params.set('w', '1024');
@@ -200,7 +200,7 @@ async function getDetail(slug) {
             'title': title.text().replace("\n", "").trim(),
             'content': content.text().replace("\n", "").trim(),
             'image': image_full,
-            'time': newTime,
+            'time': (newTime != "Invalid date")?newTime:theTime,
             'media': medias
         };
 
