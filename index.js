@@ -32,13 +32,13 @@ app.get('/', async (req, res) => {
                 name: 'CNN Indonesia',
                 all: '/cnnindonesia',
                 section: [
-                    '/tribunnews/nasional',
-                    '/tribunnews/internasional',
-                    '/tribunnews/ekonomi',
-                    '/tribunnews/olahraga',
-                    '/tribunnews/hiburan',
-                    '/tribunnews/gaya-hidup',
-                    '/tribunnews/teknologi',
+                    "/cnnindonesia/nasional",
+                    "/cnnindonesia/internasional",
+                    "/cnnindonesia/ekonomi",
+                    "/cnnindonesia/olahraga",
+                    "/cnnindonesia/hiburan",
+                    "/cnnindonesia/gaya-hidup",
+                    "/cnnindonesia/teknologi"
                 ],
                 detail: '/cnnindonesia/:slug'
             },
