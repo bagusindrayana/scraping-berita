@@ -87,7 +87,14 @@ async function getDetail(slug) {
         $("script", content).remove();
         const image = $("#article a.glightbox img.wfull");
         const time = $("#article div.mt10 time");
-        const theTime = time.attr('datetime').replace(" WIB", "");
+        const attr = time.attr('datetime');
+        let theTime = "-";
+        if(attr != undefined){
+            theTime = time.attr('datetime').replace(" WIB", "");
+        } else {
+            theTime = time.html().replace(" WIB", "");
+        }
+        
         let newTime = moment(theTime, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
         let medias = [];
         const yts = $("figure iframe",content);
@@ -124,7 +131,7 @@ async function getDetail(slug) {
         };
 
     } catch (error) {
-
+        console.log(error);
         result = {
             'error': error
         };
