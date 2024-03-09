@@ -45,30 +45,33 @@ async function getData(category) {
     try {
         const response = await axios.get(url);
         const $ = cheerio.load(response.data);
-        const isi = $("div.media_rows article");
+        const isi = $("div.nhl-list article.flex-grow");
 
         isi.each((i, e) => {
-            const title = $('a span.box_text h2.title', e).text().replace("\n", "").trim();
-            if (title != "") {
-                const image_thumbnail = $('a img', e).attr('src');
+            const tagA = $('a.flex ', e);
+            
+            if (tagA && tagA.attr('dtr-ttl')) {
+                const title = tagA.attr('dtr-ttl').replace("\n", "").trim();
+                const image_thumbnail = $('img', tagA).attr('src');
                 var url = new URL(image_thumbnail);
                 var search_params = url.searchParams;
                 search_params.set('w', '1024');
                 search_params.set('q', '100');
                 url.search = search_params.toString();
                 var image_full = url.toString();
-                var time = $('a .box_text .date', e).text().replace("•", "").trim();
+                
+                // var time = $('a .box_text .date', e).text().replace("•", "").trim();
                 // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
                 // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-                const link = $('a', e).attr('href');
+                const link = tagA.attr('href');
+                var time = link.split("/")[4].split("-")[0];
+                let newTime = moment(time, 'YYYYMMDDhh:mm:ss').format('YYYY-MM-DD hh:mm');
                 const slug = (link != undefined) ? link.replace(base_url, "") : "";
-
-                // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
                 result.push({
                     title: title,
                     image_thumbnail: image_thumbnail,
                     image_full: image_full,
-                    time: getDateFromTimeAgo(time),
+                    time: newTime,
                     link: link,
                     slug: slug
                 });
@@ -85,6 +88,7 @@ async function getData(category) {
 
 async function getDetail(slug) {
     const url = base_url + "/" + slug + "?page=all";
+    console.log(url);
 
     const months = [
         {
@@ -142,12 +146,16 @@ async function getDetail(slug) {
     try {
         const response = await axios.get(url);
         const $ = cheerio.load(response.data);
-        const title = $("#content .content_detail h1.title");
-        const content = $("#content .content_detail .detail_wrap");
+        const title = $("head title");
+        const content = $("div.detail-wrap.flex.gap-4.relative");
         $("script", content).remove();
+        $("style", content).remove();
+        $(".paradetail", content).remove();
+        $(".detail_ads", content).remove();
+        $(".linksisip", content).remove();
+        $(".embed.videocnn", content).remove();
 
-
-        const image = $('#content .content_detail .media_artikel img').attr('src');
+        const image = $('.detail-image.my-5 img').attr('src');
         var img_url = new URL(image);
         var search_params = img_url.searchParams;
         search_params.set('w', '1024');
@@ -155,17 +163,17 @@ async function getDetail(slug) {
         img_url.search = search_params.toString();
         var image_full = img_url.toString();
        
-        const time = $("#content .content_detail .date");
-        const timeArr = time.text().split(" ");
-        for (let i = 0; i < months.length; i++) {
-            const month = months[i];
-            if (month.short == timeArr[2]) {
-                timeArr[2] = month.long;
-            }
-        }
+        const time = $("div.text-cnn_grey.text-sm.mb-4").text();
+        // const timeArr = time.text().split(" ");
+        // for (let i = 0; i < months.length; i++) {
+        //     const month = months[i];
+        //     if (month.short == timeArr[2]) {
+        //         timeArr[2] = month.long;
+        //     }
+        // }
 
-        const theTime = timeArr.join(" ").replace(" WIB", "");
-        let newTime = moment(theTime, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
+        // const theTime = timeArr.join(" ").replace(" WIB", "");
+        let newTime = moment(time, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
 
         let medias = [];
         const yts = $("iframe",content);
@@ -205,7 +213,7 @@ async function getDetail(slug) {
         };
 
     } catch (error) {
-
+        console.log(error);
         result = {
             'error': error
         };
