@@ -1,5 +1,16 @@
+const cors = require('cors');
 const express = require("express");
 const app = express()
+const options = [
+    cors({
+      origin: '*',
+      methods: '*',
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
+    })
+  ];
+  
+app.use(options);
 const port = 3000
 const tribunnews = require('./api/tribunnews');
 const cnnindonesia = require('./api/cnnindonesia');
