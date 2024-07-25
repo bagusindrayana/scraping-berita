@@ -60,16 +60,27 @@ async function getData(category) {
            
         }
         const $ = cheerio.load(response.data);
-        let isi = $(".article__list.clearfix:not(.article__list--tv)");
+        let isi = $(".article__list.clearfix:not(.article__list--video)");
         if (isi.length <= 0) {
             type = 1;
             isi = $(".article__wrap__grid--flex .article__grid");
             if (isi.length <= 0) {
                 type = 2;
                 isi = $(".trenLatest__item.clearfix");
+                if (isi.length <= 0) {
+                    type = 3;
+                    isi = $(".articleList .articleItem");
+                    if (isi.length <= 0) {
+                        type = 4;
+                        isi = $(".wSpec-list .wSpec-item");
+                        
+                    }
+                }
             }
 
         }
+
+        console.log("type "+isi.length);
 
         isi.each((i, e) => {
             if (type == 0) {
@@ -84,6 +95,16 @@ async function getData(category) {
                 }
             } else if (type == 2) {
                 const p = parse3($, e);
+                if (p != null) {
+                    result.push(p);
+                }
+            } else if (type == 3) {
+                const p = parse4($, e);
+                if (p != null) {
+                    result.push(p);
+                }
+            } else if (type == 4) {
+                const p = parse5($, e);
                 if (p != null) {
                     result.push(p);
                 }
@@ -217,6 +238,88 @@ function parse3($, e) {
                 image_thumbnail: image_thumbnail,
                 image_full: image_full,
                 time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
+                link: link,
+                slug: slug
+            };
+
+        }
+    }
+
+    return null;
+}
+
+function parse4($, e) {
+    const title = $('.articleTitle', e).text().replace("\n", "").trim();
+    let image_thumbnail = $('.articleItem-img img', e).attr('data-src');
+    if (image_thumbnail == undefined) {
+        image_thumbnail = $('.articleItem-img img', e).attr('src');
+    }
+
+
+    if (title != "" && image_thumbnail != undefined) {
+
+        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
+        var time = $('.articlePost-date', e).text().trim().replace(" WIB", "");
+        const link = $('.article-link', e).attr('href');
+        const _url = new URL(link);
+        if (_url.hostname !== "www.kompas.id") {
+            const _replace = "https://" + _url.hostname;
+            const _arr_hostname = _url.hostname.split(".");
+            let slug = (link != undefined) ? link.replace(_replace, "") : "";
+            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
+                slug = _arr_hostname[0] + slug;
+            } else if (slug.charAt(0) == "/") {
+                slug = slug.slice(1);
+            }
+
+
+            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
+            return {
+                title: title,
+                image_thumbnail: image_thumbnail,
+                image_full: image_full,
+                time: time,
+                link: link,
+                slug: slug
+            };
+
+        }
+    }
+
+    return null;
+}
+
+function parse5($, e) {
+    const title = $('.wSpec-title', e).text().replace("\n", "").trim();
+    let image_thumbnail = $('.wSpec-img img', e).attr('data-src');
+    if (image_thumbnail == undefined) {
+        image_thumbnail = $('.wSpec-img img', e).attr('src');
+    }
+
+
+    if (title != "" && image_thumbnail != undefined) {
+
+        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
+        var time = $('.wSpec-subtitle span', e).text().trim().replace(" WIB", "");
+        const link = $('.wSpec-item a', e).attr('href');
+        const _url = new URL(link);
+        if (_url.hostname !== "www.kompas.id") {
+            const _replace = "https://" + _url.hostname;
+            const _arr_hostname = _url.hostname.split(".");
+            let slug = (link != undefined) ? link.replace(_replace, "") : "";
+            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
+                slug = _arr_hostname[0] + slug;
+            } else if (slug.charAt(0) == "/") {
+                slug = slug.slice(1);
+            }
+
+
+            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
+            return {
+                title: title,
+                image_thumbnail: image_thumbnail,
+                image_full: image_full,
+                time: getDateFromTimeAgo(time),
                 link: link,
                 slug: slug
             };
