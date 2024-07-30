@@ -164,7 +164,7 @@ async function getDetail(slug) {
         var image_full = img_url.toString();
        
         const time = $("div.text-cnn_grey.text-sm.mb-4").text();
-        const timeArr = time.text().split(" ");
+        const timeArr = time.split(" ");
         for (let i = 0; i < months.length; i++) {
             const month = months[i];
             if (month.short == timeArr[2]) {
