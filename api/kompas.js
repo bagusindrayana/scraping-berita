@@ -331,10 +331,16 @@ function parse5($, e) {
 }
 
 async function getDetail(category, slug) {
+    const notSubdomain = [
+        'global','baca'
+    ];
     let url = `https://${category.toLowerCase()}.kompas.com/${slug}?page=all`;
-    if (category.toLowerCase() == "baca") {
+    if(notSubdomain.includes(category.toLowerCase())){
         url = `https://kompas.com/${category.toLowerCase()}/${slug}?page=all`;
     }
+    // if (category.toLowerCase() == "baca") {
+    //     url = `https://kompas.com/${category.toLowerCase()}/${slug}?page=all`;
+    // }
 
     let result = {};
     try {
