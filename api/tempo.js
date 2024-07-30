@@ -90,7 +90,7 @@ async function getData(category) {
 
 async function getDetail(category,slug) {
     let url = `https://${category.toLowerCase()}.tempo.co/${slug}`;
-
+    console.log(url);
     let result = {};
     try {
         const response = await axios.get(url);
@@ -99,7 +99,8 @@ async function getDetail(category,slug) {
         const title = $(".detail-title h1.title",_element_article);
         const content = $("#isi",_element_article);
         $("script", content).remove();
-
+        $(".iklan", content).remove();
+        $(".bacajuga", content).remove();
 
         const image = $('.foto-detail img',_element_article).attr('src');
         // var img_url = new URL(image);
@@ -115,12 +116,12 @@ async function getDetail(category,slug) {
         let newTime = moment(time.replace(" WIB", ""), 'dddd, Do MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
 
         let medias = [];
-        const yts = $("iframe",content);
-        yts.each((i, e) => {
-            const yt = $(e).attr('src');
+        const embeds = $("iframe",content);
+        embeds.each((i, e) => {
+            const embed = $(e).attr('src');
             medias.push({
-                type: 'youtube',
-                url: yt
+                type: 'embed',
+                url: embed
             });
         });
         const imgs = $("img",content);
@@ -144,6 +145,7 @@ async function getDetail(category,slug) {
         });
 
         result = {
+            'original_ur': url,
             'title': title.text().replace("\n", "").trim(),
             'content': content.text().replace("\n", "").trim(),
             'image': image,

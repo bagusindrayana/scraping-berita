@@ -176,12 +176,12 @@ async function getDetail(slug) {
         let newTime = moment(time, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
 
         let medias = [];
-        const yts = $("iframe",content);
-        yts.each((i, e) => {
-            const yt = $(e).attr('src');
+        const embeds = $("iframe",content);
+        embeds.each((i, e) => {
+            const embed = $(e).attr('src');
             medias.push({
-                type: 'youtube',
-                url: yt
+                type: 'embed',
+                url: embed
             });
         });
         const imgs = $("img",content);
@@ -205,6 +205,7 @@ async function getDetail(slug) {
         });
 
         result = {
+            'original_url':url,
             'title': title.text().replace("\n", "").trim(),
             'content': content.text().replace("\n", "").trim(),
             'image': image_full,

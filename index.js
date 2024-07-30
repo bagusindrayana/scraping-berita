@@ -112,66 +112,99 @@ app.get('/', async (req, res) => {
 app.get('/tribunnews', async (req, res) => {
     var result = await tribunnews.getData("news");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/tribunnews/:cat', async (req, res) => {
     var result = await tribunnews.getData(req.params.cat || "news");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/tribunnews/:cat/:y/:m/:d/:slug', async (req, res) => {
     var result = await tribunnews.getDetail(`${req.params.cat}/${req.params.y}/${req.params.m}/${req.params.d}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/cnnindonesia', async (req, res) => {
     var result = await cnnindonesia.getData("");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/cnnindonesia/:cat', async (req, res) => {
     var result = await cnnindonesia.getData(req.params.cat || "");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/cnnindonesia/:cat/:id/:slug', async (req, res) => {
     var result = await cnnindonesia.getDetail(`${req.params.cat}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/tempo', async (req, res) => {
     var result = await tempo.getData("");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/tempo/:cat', async (req, res) => {
     var result = await tempo.getData(req.params.cat || "");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/tempo/:cat/:read/:id/:slug', async (req, res) => {
     var result = await tempo.getDetail(`${req.params.cat}`,`${req.params.read}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/kompas', async (req, res) => {
     var result = await kompas.getData("");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/kompas/:cat', async (req, res) => {
     var result = await kompas.getData(req.params.cat || "");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
@@ -180,6 +213,9 @@ app.get('/kompas/:cat', async (req, res) => {
 app.get('/kompas/:cat/:read/:y/:m/:d/:id/:slug', async (req, res) => {
     var result = await kompas.getDetail(`${req.params.cat}`,`${req.params.read}/${req.params.y}/${req.params.m}/${req.params.d}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
@@ -187,12 +223,18 @@ app.get('/kompas/:cat/:read/:y/:m/:d/:id/:slug', async (req, res) => {
 app.get('/liputan6', async (req, res) => {
     var result = await liputan6.getData("");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
 app.get('/liputan6/:cat', async (req, res) => {
     var result = await liputan6.getData(req.params.cat || "");
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 
@@ -201,6 +243,9 @@ app.get('/liputan6/:cat', async (req, res) => {
 app.get('/liputan6/:cat/:read/:id/:slug', async (req, res) => {
     var result = await liputan6.getDetail(`${req.params.cat}/${req.params.read}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
     res.end(JSON.stringify(result));
 });
 

@@ -151,6 +151,7 @@ async function getDetail(slug) {
       
         const content = $(".article div.read-page-upper div.article-content-body");
         $("script", content).remove();
+        $(".iklan", content).remove();
         const image = $(".article .article-photo-gallery--item__content img");
         const time = $(".article span.article-header__datetime").text().replace(" pada ","");
         const timeArr = time.split(" ");
@@ -164,12 +165,12 @@ async function getDetail(slug) {
         const theTime = timeArr.join(" ").replace(" WIB", "");
         let newTime = moment(theTime, 'DD MMMM YYYY, hh:mm').format('YYYY-MM-DD hh:mm');
         let medias = [];
-        const yts = $("figure iframe", content);
-        yts.each((i, e) => {
-            const yt = $(e).attr('src');
+        const embeds = $("iframe",content);
+        embeds.each((i, e) => {
+            const embed = $(e).attr('src');
             medias.push({
-                type: 'youtube',
-                url: yt
+                type: 'embed',
+                url: embed
             });
         });
         const imgs = $("img", content);

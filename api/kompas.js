@@ -362,12 +362,12 @@ async function getDetail(category, slug) {
         let newTime = moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm');
 
         let medias = [];
-        const yts = $("iframe", content);
-        yts.each((i, e) => {
-            const yt = $(e).attr('src');
+        const embeds = $("iframe",content);
+        embeds.each((i, e) => {
+            const embed = $(e).attr('src');
             medias.push({
-                type: 'youtube',
-                url: yt
+                type: 'embed',
+                url: embed
             });
         });
         const imgs = $("img", content);
