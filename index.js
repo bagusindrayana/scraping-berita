@@ -136,6 +136,17 @@ app.get('/tribunnews/:cat/:y/:m/:d/:slug', async (req, res) => {
     res.end(JSON.stringify(result));
 });
 
+// Current Tribunnews URLs use /<channel>/<article-id>/<slug> (no date
+// segments), unlike the older /<channel>/<year>/<month>/<day>/<slug> form.
+app.get('/tribunnews/:cat/:id/:slug', async (req, res) => {
+    var result = await tribunnews.getDetail(`${req.params.cat}/${req.params.id}/${req.params.slug}`);
+    res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
+    res.end(JSON.stringify(result));
+});
+
 app.get('/cnnindonesia', async (req, res) => {
     var result = await cnnindonesia.getData("");
     res.setHeader('Content-Type', 'application/json');
@@ -212,6 +223,17 @@ app.get('/kompas/:cat', async (req, res) => {
 
 app.get('/kompas/:cat/:read/:y/:m/:d/:id/:slug', async (req, res) => {
     var result = await kompas.getDetail(`${req.params.cat}`,`${req.params.read}/${req.params.y}/${req.params.m}/${req.params.d}/${req.params.id}/${req.params.slug}`);
+    res.setHeader('Content-Type', 'application/json');
+    if(result.error){
+        res.status(500);
+    }
+    res.end(JSON.stringify(result));
+});
+
+// Some channels (e.g. health) use a short article id without the
+// year/month/day path segments: /health/read/26K04094103168/<slug>.
+app.get('/kompas/:cat/:read/:id/:slug', async (req, res) => {
+    var result = await kompas.getDetail(`${req.params.cat}`,`${req.params.read}/${req.params.id}/${req.params.slug}`);
     res.setHeader('Content-Type', 'application/json');
     if(result.error){
         res.status(500);

@@ -1,145 +1,173 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
-const moment = require('moment');
-moment.locale('id');
-
-
-function getDateFromTimeAgo(timeString) {
-    const timeAgo = { hours: 0, minutes: 0, seconds: 0 };
-
-    const secondsAgoMatches = timeString.match(/^(\d+) (detik? yang lalu)/);
-    const minutesAgoMatches = timeString.match(/^(\d+) (menit? yang lalu)/);
-    const hoursAgoMatches = timeString.match(/^(\d+) (jam? yang lalu)/);
-    const hoursAndMinutesAgoMatches = timeString.match(/^(\d+) (jam? dan) (\d+) (menit? yang lalu)/);
-
-    if (secondsAgoMatches) {
-        timeAgo.seconds = secondsAgoMatches[1];
-    }
-    if (minutesAgoMatches) {
-        timeAgo.minutes = minutesAgoMatches[1];
-    }
-    if (hoursAgoMatches) {
-        timeAgo.hours = hoursAgoMatches[1];
-    }
-    if (hoursAndMinutesAgoMatches) {
-        timeAgo.hours = hoursAndMinutesAgoMatches[1];
-        timeAgo.minutes = hoursAndMinutesAgoMatches[3];
-    }
-
-    return moment()
-        .subtract(timeAgo.seconds, 'seconds')
-        .subtract(timeAgo.minutes, 'minutes')
-        .subtract(timeAgo.hours, 'hours')
-        .format('YYYY-MM-DD hh:mm');
-
-}
-
+const {
+    normalizeSpace,
+    fetchHtml,
+    errorResult,
+    toTime,
+    toTimeFromAgo,
+    readJsonLd,
+    collectMedia,
+} = require("./helpers");
 
 const base_url = "https://www.tribunnews.com";
+const mobile_base_url = "https://m.tribunnews.com";
+
+/**
+ * Tribunnews serves resized thumbnails through an asset proxy.
+ * Rebuild the original image URL from the path after "/tribunnews/foto/".
+ */
+function fullImage(src) {
+    if (!src) return "";
+    const marker = "/tribunnews/foto/";
+    const index = src.indexOf(marker);
+    if (index !== -1) {
+        return "https://asset.tribunnews.com" + src.slice(index);
+    }
+    return src.replace("thumbnails2", "images");
+}
+
+function parseListItem($, element) {
+    const titleLink = $("div.mr140 h3 a", element).first().length
+        ? $("div.mr140 h3 a", element).first()
+        : $("h3 a", element).first();
+
+    const title = normalizeSpace(titleLink.text());
+    const link = titleLink.attr("href");
+
+    if (!title || !link) {
+        return null;
+    }
+
+    const image =
+        $("div.fr img", element).first().attr("src") ||
+        $("img", element).first().attr("src") ||
+        null;
+
+    const timeEl = $("time", element).first();
+    const rawTime =
+        timeEl.attr("datetime") ||
+        timeEl.attr("title") ||
+        normalizeSpace(timeEl.text());
+
+    const time =
+        toTime(rawTime, ["YYYY-MM-DD HH:mm:ss", "YYYY-MM-DD HH:mm"]) ||
+        toTimeFromAgo(rawTime);
+
+    return {
+        title: title,
+        image_thumbnail: image,
+        image_full: fullImage(image),
+        time: time,
+        link: link,
+        slug: link.replace(base_url, ""),
+    };
+}
 
 async function getData(category) {
-    const url = base_url + "/" + category.toLowerCase();
-    let result = [];
+    const cat = String(category || "news").toLowerCase();
+    const url = `${base_url}/${cat}`;
+
     try {
-        const response = await axios.get(url);
+        const response = await fetchHtml(url);
         const $ = cheerio.load(response.data);
-        const isi = $("li.art-list.pos_rel");
 
-        isi.each((i, e) => {
-            const title = $(e).children('div.mr140').children('h3').children('a').text().replace("\n", "").trim();
-            if (title != "") {
-                const image_thumbnail = $(e).children('div.fr').children('a').children('img').attr('src');
-                const image_full = (image_thumbnail) ? image_thumbnail.replace("thumbnails2", "images") : "";
-                // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-                const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-                const link = $(e).children('div.mr140').children('h3').children('a').attr('href');
-                const slug = (link != undefined) ? link.replace(base_url, "") : "";
+        // Current markup uses div.listicle, older archives used li.art-list.
+        let items = $("div.listicle");
+        if (items.length <= 0) items = $("li.art-list.pos_rel");
+        if (items.length <= 0) items = $("div.p1520.pos_rel.bdr");
+        if (items.length <= 0) items = $("div.p1520.pos_rel");
 
-                let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-                result.push({
-                    title: title,
-                    image_thumbnail: image_thumbnail,
-                    image_full: image_full,
-                    // description: description,
-                    time: newTime,
-                    link: link,
-                    slug: slug
-                });
+        const result = [];
+        const seen = new Set();
+
+        items.each((i, element) => {
+            const item = parseListItem($, element);
+            if (item && !seen.has(item.link)) {
+                seen.add(item.link);
+                result.push(item);
             }
         });
+
+        if (result.length <= 0) {
+            return { error: { message: "Tidak ada berita yang bisa diparsing dari halaman " + url } };
+        }
+
+        return result;
     } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
 }
 
 async function getDetail(slug) {
-    const url = "https://m.tribunnews.com/" + slug + "?page=all";
-    let result = {};
-    try {
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
-        const title = $("#article .pa15 h1.f32");
-        const content = $("div.txt-article");
-        $("script", content).remove();
-        const image = $("#article a.glightbox img.wfull");
-        const time = $("#article div.mt10 time");
-        const attr = time.attr('datetime');
-        let theTime = "-";
-        if(attr != undefined){
-            theTime = time.attr('datetime').replace(" WIB", "");
-        } else {
-            theTime = time.html().replace(" WIB", "");
+    const cleanSlug = String(slug || "").replace(/^\/+/, "");
+    // Desktop first because it exposes a slightly cleaner article container,
+    // mobile as a fallback.
+    const urls = [
+        `${base_url}/${cleanSlug}?page=all`,
+        `${mobile_base_url}/${cleanSlug}?page=all`,
+    ];
+
+    let lastError;
+    for (const url of urls) {
+        try {
+            const response = await fetchHtml(url);
+            const $ = cheerio.load(response.data);
+
+            const articleRoot = $("#article").length ? $("#article") : $("body");
+            const title =
+                normalizeSpace(articleRoot.find("h1").first().text()) ||
+                normalizeSpace($('meta[property="og:title"]').attr("content"));
+
+            let content = articleRoot.find("div.txt-article").first();
+            if (content.length <= 0) content = articleRoot.find("article").first();
+            if (content.length <= 0) content = articleRoot;
+
+            const medias = collectMedia($, content);
+
+            content.find("script, style, noscript").remove();
+            content
+                .find(".embed, .ads, .iklan, .advertisement, .advertisement-placeholder, [id^='div-gpt-ad']")
+                .remove();
+            content.find("iframe").remove();
+
+            const jsonLd = readJsonLd($);
+            let theTime = jsonLd ? toTime(jsonLd.datePublished) : null;
+
+            if (!theTime) {
+                const timeEl = articleRoot.find("time").first();
+                theTime =
+                    toTime(timeEl.attr("datetime") || timeEl.attr("title")) ||
+                    toTime(timeEl.text(), [
+                        "dddd, D MMMM YYYY HH:mm",
+                        "dddd, DD MMMM YYYY HH:mm",
+                        "dddd, D MMMM YYYY",
+                        "D MMMM YYYY HH:mm",
+                    ]) ||
+                    toTimeFromAgo(timeEl.text());
+            }
+
+            const image =
+                $('meta[property="og:image"]').attr("content") ||
+                articleRoot.find("a.glightbox img").first().attr("src") ||
+                articleRoot.find("img.wfull").first().attr("src") ||
+                null;
+
+            return {
+                title: title,
+                content: normalizeSpace(content.text()),
+                image: image,
+                time: theTime || "-",
+                media: medias,
+            };
+        } catch (error) {
+            lastError = error;
         }
-        
-        let newTime = moment(theTime, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
-        let medias = [];
-        const embeds = $("iframe",content);
-        embeds.each((i, e) => {
-            const embed = $(e).attr('src');
-            medias.push({
-                type: 'embed',
-                url: embed
-            });
-        });
-        const imgs = $("img",content);
-        imgs.each((i, e) => {
-            const img = $(e).attr('src');
-            medias.push({
-                type: 'image',
-                url: img
-            });
-        });
-        const articles = $("article",content);
-        articles.each((i, e) => {
-            const article = $('a',e).attr('href');
-            medias.push({
-                type: 'article',
-                url: article
-            });
-        });
-
-        result = {
-            'title': title.text().replace("\n", "").trim(),
-            'content': content.text().replace("\n", "").trim(),
-            'image': image.attr('src'),
-            'time': (newTime != "Invalid date")?newTime:theTime,
-            'media': medias
-        };
-
-    } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
     }
-    return result;
+
+    return errorResult(lastError);
 }
 
 module.exports = {
     getData: getData,
-    getDetail: getDetail
+    getDetail: getDetail,
 };

@@ -1,215 +1,288 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
-const moment = require('moment');
-moment.locale('id');
-
-const months = [
-    {
-        'short': 'Jan',
-        'long': 'Januari'
-    },
-    {
-        'short': 'Feb',
-        'long': 'Februari'
-    },
-    {
-        'short': 'Mar',
-        'long': 'Maret'
-    },
-    {
-        'short': 'Apr',
-        'long': 'April'
-    },
-    {
-        'short': 'Mei',
-        'long': 'Mei'
-    },
-    {
-        'short': 'Jun',
-        'long': 'Juni'
-    },
-    {
-        'short': 'Jul',
-        'long': 'Juli'
-    },
-    {
-        'short': 'Agu',
-        'long': 'Agustus'
-    },
-    {
-        'short': 'Sep',
-        'long': 'September'
-    },
-    {
-        'short': 'Okt',
-        'long': 'Oktober'
-    },
-    {
-        'short': 'Nov',
-        'long': 'November'
-    },
-    {
-        'short': 'Des',
-        'long': 'Desember'
-    }
-
-];
-
-function getDateFromTimeAgo(timeString) {
-    const timeAgo = { hours: 0, minutes: 0, seconds: 0 };
-
-    const secondsAgoMatches = timeString.match(/^(\d+) (detik? yang lalu)/);
-    const minutesAgoMatches = timeString.match(/^(\d+) (menit? yang lalu)/);
-    const hoursAgoMatches = timeString.match(/^(\d+) (jam? yang lalu)/);
-    const hoursAndMinutesAgoMatches = timeString.match(/^(\d+) (jam? dan) (\d+) (menit? yang lalu)/);
-
-    if (secondsAgoMatches) {
-        timeAgo.seconds = secondsAgoMatches[1];
-    }
-    if (minutesAgoMatches) {
-        timeAgo.minutes = minutesAgoMatches[1];
-    }
-    if (hoursAgoMatches) {
-        timeAgo.hours = hoursAgoMatches[1];
-    }
-    if (hoursAndMinutesAgoMatches) {
-        timeAgo.hours = hoursAndMinutesAgoMatches[1];
-        timeAgo.minutes = hoursAndMinutesAgoMatches[3];
-    }
-
-    return moment()
-        .subtract(timeAgo.seconds, 'seconds')
-        .subtract(timeAgo.minutes, 'minutes')
-        .subtract(timeAgo.hours, 'hours')
-        .format('YYYY-MM-DD hh:mm');
-
-}
-
+const {
+    normalizeSpace,
+    fetchHtml,
+    errorResult,
+    toTime,
+    toTimeFromAgo,
+    readJsonLd,
+    collectMedia,
+    absoluteUrl,
+} = require("./helpers");
 
 const base_url = "https://www.liputan6.com";
 
-async function getData(category) {
-    const url = base_url + "/" + category.toLowerCase();
-    let result = [];
-    try {
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
-        const isi = $(".articles--iridescent-list article");
+const LIST_TIME_FORMATS = [
+    "DD MMM YYYY HH:mm",
+    "D MMM YYYY HH:mm",
+    "DD MMMM YYYY HH:mm",
+    "D MMMM YYYY HH:mm",
+    "YYYY-MM-DD HH:mm:ss",
+];
 
-        isi.each((i, e) => {
-            const title = $('.articles--iridescent-list--text-item__title-link-text', e).text().replace("\n", "").trim();
-            const time = $('.articles--iridescent-list--text-item__time', e).text().trim();
-            if (title != "" && time != "") {
+/**
+ * Liputan6 thumbnails contain the requested crop size in the path,
+ * e.g. /100x100/smart/ or /255x143/smart/.
+ */
+function fullImage(src) {
+    if (!src) return null;
+    return src.replace(/\/\d+x\d+\/smart\//, "/1200x675/smart/");
+}
 
-                const image_thumbnail = $('picture.articles--iridescent-list--text-item__figure-image img', e).attr('src');
-                // const image_full = (image_thumbnail) ? image_thumbnail.replace("thumbnails2", "images") : "";
-                // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
+function buildSlug(link) {
+    if (!link) return "";
+    return String(link).replace(base_url, "").replace("https://m.liputan6.com", "");
+}
 
-                const link = $('h4.articles--iridescent-list--text-item__title a', e).attr('href');
-                const slug = (link != undefined) ? link.replace(base_url, "") : "";
+function parseIridescentList($) {
+    const result = [];
+    const seen = new Set();
 
-                const timeArr = time.split(" ");
-                for (let i = 0; i < months.length; i++) {
-                    const month = months[i];
-                    if (month.short == timeArr[1]) {
-                        timeArr[1] = month.long;
-                    }
-                }
+    $(".articles--iridescent-list article").each((i, element) => {
+        const titleLink = $(
+            ".articles--iridescent-list--text-item__title a",
+            element
+        ).first();
+        const title = normalizeSpace(
+            $(".articles--iridescent-list--text-item__title-link-text", element).text() ||
+                titleLink.text()
+        );
+        const link = titleLink.attr("href");
+        if (!title || !link) return;
 
-                const theTime = timeArr.join(" ").replace(" WIB", "");
-                let newTime = moment(theTime, 'DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
+        let imageEl = $(
+            ".articles--iridescent-list--text-item__figure-image",
+            element
+        ).first();
+        if (imageEl.length <= 0) {
+            const fallbackImage = $("figure img", element).first();
+            imageEl = fallbackImage;
+        }
+        const image = imageEl.attr("data-src") || imageEl.attr("src") || null;
 
-                // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-                result.push({
-                    title: title,
-                    image_thumbnail: image_thumbnail,
-                    image_full: null,
-                    // description: description,
-                    time: newTime,
-                    link: link,
-                    slug: slug
-                });
-            }
+        const timeEl = $("time", element).first();
+        const rawTime = timeEl.attr("datetime") || normalizeSpace(
+            $(".articles--iridescent-list--text-item__time", element).text()
+        );
+        const time =
+            toTime(rawTime, LIST_TIME_FORMATS) || toTimeFromAgo(rawTime);
+
+        if (seen.has(link)) return;
+        seen.add(link);
+
+        result.push({
+            title: title,
+            image_thumbnail: image,
+            image_full: fullImage(image),
+            time: time,
+            link: link,
+            slug: buildSlug(link),
         });
-    } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
-    }
+    });
+
     return result;
 }
 
-async function getDetail(slug) {
-    const url = "https://m.liputan6.com/" + slug + "?page=all";
+/**
+ * The homepage uses a newer layout than the channel pages.
+ */
+function parseHomepage($) {
+    const result = [];
+    const seen = new Set();
 
-    let result = {};
+    const push = (title, link, image, rawTime) => {
+        title = normalizeSpace(title);
+        if (!title || !link || seen.has(link)) return;
+        seen.add(link);
+        const time = toTime(rawTime, LIST_TIME_FORMATS) || toTimeFromAgo(rawTime);
+        result.push({
+            title: title,
+            image_thumbnail: image || null,
+            image_full: fullImage(image),
+            time: time,
+            link: absoluteUrl(link, base_url),
+            slug: buildSlug(link),
+        });
+    };
+
+    $(".headline__item").each((i, element) => {
+        push(
+            $(".headline__item__title", element).text(),
+            $(element).attr("href"),
+            $(".headline__item__image", element).attr("src") ||
+                $(".headline__item__image", element).attr("data-src"),
+            $("time", element).first().attr("datetime")
+        );
+    });
+
+    $(".channel-highlights__item").each((i, element) => {
+        const linkEl = $(".channel-highlights__link", element).first();
+        push(
+            $(".channel-highlights__text a", element).text() ||
+                $(".channel-highlights__text", element).text(),
+            linkEl.attr("href"),
+            $(".channel-highlights__image", element).attr("src") ||
+                $(".channel-highlights__image", element).attr("data-src"),
+            $(".channel-highlights__time", element).attr("datetime")
+        );
+    });
+
+    $(".special-content-inner-box-list-item").each((i, element) => {
+        const linkEl = $(".special-content-inner-box-list-item-title", element).first();
+        push(
+            linkEl.text(),
+            linkEl.attr("href"),
+            $(".special-content-inner-box-list-item-figure-img", element).attr("src") ||
+                $(".special-content-inner-box-list-item-figure-img", element).attr("data-src"),
+            $(".special-content-inner-box-list-item-time", element).attr("datetime")
+        );
+    });
+
+    return result;
+}
+
+/**
+ * Final fallback that works on both layouts: follow article links and use
+ * the closest container for the title/image/time.
+ */
+function parseGeneric($) {
+    const result = [];
+    const seen = new Set();
+
+    $('a[href*="/read/"]').each((i, element) => {
+        const href = $(element).attr("href");
+        if (!href) return;
+
+        const container = $(element).closest("article, li, div");
+        const title =
+            normalizeSpace($(element).text()) ||
+            normalizeSpace(container.find("h1, h2, h3, h4").first().text()) ||
+            normalizeSpace(container.find("img").first().attr("alt"));
+
+        if (!title || seen.has(href)) return;
+        seen.add(href);
+
+        const imageEl = container.find("img").first();
+        const image = imageEl.attr("data-src") || imageEl.attr("src") || null;
+
+        const timeEl = container.find("time").first();
+        const rawTime = timeEl.attr("datetime") || normalizeSpace(
+            container
+                .find(
+                    ".articles--iridescent-list--text-item__time, .item__time, .headline__item__published, .channel-highlights__time"
+                )
+                .first()
+                .text()
+        );
+
+        result.push({
+            title: title,
+            image_thumbnail: image,
+            image_full: fullImage(image),
+            time: toTime(rawTime, LIST_TIME_FORMATS) || toTimeFromAgo(rawTime),
+            link: absoluteUrl(href, base_url),
+            slug: buildSlug(href),
+        });
+    });
+
+    return result;
+}
+
+async function getData(category) {
+    const cat = String(category || "").toLowerCase();
+    const url = cat ? `${base_url}/${cat}` : base_url;
+
     try {
-        const response = await axios.get(url);
+        const response = await fetchHtml(url);
         const $ = cheerio.load(response.data);
-        const title = $(".article h1.article-header__title");
-      
-        const content = $(".article div.read-page-upper div.article-content-body");
-        $("script", content).remove();
-        $(".iklan", content).remove();
-        const image = $(".article .article-photo-gallery--item__content img");
-        const time = $(".article span.article-header__datetime").text().replace(" pada ","");
-        const timeArr = time.split(" ");
-        for (let i = 0; i < months.length; i++) {
-            const month = months[i];
-            if (month.short == timeArr[1]) {
-                timeArr[1] = month.long;
-            }
+
+        let result = parseIridescentList($);
+
+        if (cat === "" && result.length <= 0) {
+            result = parseHomepage($);
         }
 
-        const theTime = timeArr.join(" ").replace(" WIB", "");
-        let newTime = moment(theTime, 'DD MMMM YYYY, hh:mm').format('YYYY-MM-DD hh:mm');
-        let medias = [];
-        const embeds = $("iframe",content);
-        embeds.each((i, e) => {
-            const embed = $(e).attr('src');
-            medias.push({
-                type: 'embed',
-                url: embed
-            });
-        });
-        const imgs = $("img", content);
-        imgs.each((i, e) => {
-            const img = $(e).attr('data-src');
-            if(!img.includes("blank") && !img.includes(".gif")){
-                medias.push({
-                    type: 'image',
-                    url: img
-                });
-            }
-        });
-        const articles = $("article", content);
-        articles.each((i, e) => {
-            const article = $('a', e).attr('href');
-            medias.push({
-                type: 'article',
-                url: article
-            });
-        });
+        if (result.length <= 0) {
+            result = parseGeneric($);
+        }
 
-        result = {
-            'title': title.text().replace("\n", "").trim(),
-            'content': content.text().replace("\n", "").trim(),
-            'image': image.attr('src'),
-            'time': (newTime != "Invalid date")?newTime:theTime,
-            'media': medias
-        };
+        if (result.length <= 0) {
+            return { error: { message: "Tidak ada berita yang bisa diparsing dari halaman " + url } };
+        }
 
+        return result;
     } catch (error) {
-
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
+}
+
+async function getDetail(slug) {
+    const cleanSlug = String(slug || "").replace(/^\/+/, "");
+    const url = `${base_url}/${cleanSlug}`;
+
+    try {
+        const response = await fetchHtml(url);
+        const $ = cheerio.load(response.data);
+
+        const title =
+            normalizeSpace($("h1").first().text()) ||
+            normalizeSpace($('meta[property="og:title"]').attr("content"));
+
+        let content = $(".article-content-body").first();
+        if (content.length <= 0) content = $(".read-page-box").first();
+        if (content.length <= 0) content = $("article").first();
+        if (content.length <= 0) content = $("body");
+
+        const medias = collectMedia($, content);
+
+        content.find("script, style, noscript").remove();
+        content
+            .find(
+                ".baca-juga-collections, .advertisement-placeholder, .advertisement-text, .ads, .iklan, [id^='div-gpt-ad']"
+            )
+            .remove();
+        content.find("iframe").remove();
+
+        const jsonLd = readJsonLd($);
+        let theTime = jsonLd ? toTime(jsonLd.datePublished) : null;
+
+        if (!theTime) {
+            theTime = toTime(
+                $('meta[property="article:published_time"]').attr("content")
+            );
+        }
+
+        if (!theTime) {
+            const rawTime = normalizeSpace(
+                $(".read-page-box__author__updated").first().text()
+            ).replace(/^Diterbitkan\s*/i, "").replace(/WIB/gi, "");
+            theTime = toTime(rawTime, [
+                "DD MMMM YYYY, HH:mm",
+                "D MMMM YYYY, HH:mm",
+                "DD MMMM YYYY HH:mm",
+                "D MMMM YYYY HH:mm",
+            ]);
+        }
+
+        const image =
+            $('meta[property="og:image"]').attr("content") ||
+            content.find("img").first().attr("src") ||
+            null;
+
+        return {
+            original_url: url,
+            title: title,
+            content: normalizeSpace(content.text()),
+            image: image,
+            time: theTime || "-",
+            media: medias,
+        };
+    } catch (error) {
+        return errorResult(error);
+    }
 }
 
 module.exports = {
     getData: getData,
-    getDetail: getDetail
+    getDetail: getDetail,
 };

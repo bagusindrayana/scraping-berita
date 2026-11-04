@@ -1,419 +1,366 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
-const moment = require('moment');
-moment.locale('id');
-
-
-function getDateFromTimeAgo(timeString) {
-    const timeAgo = { hours: 0, minutes: 0, seconds: 0 };
-
-    const secondsAgoMatches = timeString.match(/^(\d+) (detik? yang lalu)/);
-    const minutesAgoMatches = timeString.match(/^(\d+) (menit? yang lalu)/);
-    const hoursAgoMatches = timeString.match(/^(\d+) (jam? yang lalu)/);
-    const hoursAndMinutesAgoMatches = timeString.match(/^(\d+) (jam? dan) (\d+) (menit? yang lalu)/);
-
-    if (secondsAgoMatches) {
-        timeAgo.seconds = secondsAgoMatches[1];
-    }
-    if (minutesAgoMatches) {
-        timeAgo.minutes = minutesAgoMatches[1];
-    }
-    if (hoursAgoMatches) {
-        timeAgo.hours = hoursAgoMatches[1];
-    }
-    if (hoursAndMinutesAgoMatches) {
-        timeAgo.hours = hoursAndMinutesAgoMatches[1];
-        timeAgo.minutes = hoursAndMinutesAgoMatches[3];
-    }
-
-    return moment()
-        .subtract(timeAgo.seconds, 'seconds')
-        .subtract(timeAgo.minutes, 'minutes')
-        .subtract(timeAgo.hours, 'hours')
-        .format('YYYY-MM-DD hh:mm');
-
-}
-
-
+const {
+    normalizeSpace,
+    fetchHtml,
+    errorResult,
+    toTime,
+    toTimeFromAgo,
+    readJsonLd,
+    collectMedia,
+    absoluteUrl,
+} = require("./helpers");
 
 const base_url = "https://www.kompas.com";
 
-async function getData(category) {
-    let url = `https://${category.toLowerCase()}.kompas.com`;
-    if (category == "") {
-        url = base_url;
-    }
-    var type = 0;
-    let result = [];
-    var tryagain = false;
+const LIST_TIME_FORMATS = [
+    "D MMMM YYYY HH:mm",
+    "DD MMMM YYYY HH:mm",
+    "D MMMM YYYY, HH:mm",
+    "DD MMMM YYYY, HH:mm",
+    "D MMMM YYYY",
+    "DD MMMM YYYY",
+    "DD/MM/YYYY HH:mm",
+    "DD/MM/YYYY, HH:mm",
+    "D/M/YYYY HH:mm",
+    "D/M/YYYY, HH:mm",
+    "DD/MM/YYYY",
+    "D/M/YYYY",
+];
+
+const DETAIL_TIME_FORMATS = [
+    "D MMMM YYYY, HH:mm",
+    "DD MMMM YYYY, HH:mm",
+    "D MMMM YYYY HH:mm",
+    "DD MMMM YYYY HH:mm",
+];
+
+/**
+ * Kompas homepages embed "Belt Network" promos (Kompasiana, Ohayo Jepang,
+ * JEO, ...) alongside real articles. They carry a source=wp_beltnetwork
+ * marker and are neither Kompas news nor guaranteed to have a timestamp.
+ */
+function isArticleLink(link) {
+    if (!link) return false;
     try {
-        let response = await axios.get(url).catch((error) => {
-        
-            if (error.code == "ENOTFOUND") {
-                url = `https://www.kompas.com/${category.toLowerCase()}`;
-                tryagain = true;
+        const url = new URL(link, base_url);
+        const host = url.hostname.toLowerCase();
+        if (url.searchParams.get("source") === "wp_beltnetwork") return false;
+        if (host === "kompasiana.com" || host.endsWith(".kompasiana.com")) return false;
+        return url.pathname.includes("/read/");
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Kompas image URLs can be resized variants. Recover the original asset.
+ */
+function fullImage(src) {
+    if (!src) return src;
+    const match = src.match(/\/data\/photo\/.+$/);
+    if (match) {
+        return "https://asset.kompas.com" + match[0];
+    }
+    return src;
+}
+
+function timeFromLink(link) {
+    const match = String(link || "").match(
+        /\/read\/(\d{4})\/(\d{2})\/(\d{2})\/(\d{2})(\d{2})(\d{2})/
+    );
+    if (!match) return null;
+    return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}`;
+}
+
+function buildSlug(link) {
+    if (!link) return "";
+    try {
+        const url = new URL(link, base_url);
+        const hostParts = url.hostname.split(".");
+        const path = url.pathname.replace(/^\/+/, "");
+
+        // Links that do not use a channel subdomain.
+        if (hostParts[0] === "www") {
+            if (path.startsWith("read/")) {
+                return "www/" + path;
             }
-            // Do something on error...
-        });
-        if(tryagain){
-            response = await axios.get(url);
-           
+            // e.g. www.kompas.com/global/read/... -> global/read/...
+            return path;
         }
+
+        // e.g. nasional.kompas.com/read/... -> nasional/read/...
+        return hostParts[0] + "/" + path;
+    } catch (e) {
+        return String(link).replace(base_url, "").replace(/^\/+/, "");
+    }
+}
+
+function extractItem($, element, config) {
+    const titleSelector = config.title;
+    const linkSelector = config.link || config.title;
+
+    const titleEl = titleSelector ? $(titleSelector, element).first() : $();
+    const title = normalizeSpace(titleEl.text());
+
+    const linkEl = linkSelector ? $(linkSelector, element).first() : $(element);
+    const link = linkEl.attr("href") || $(element).attr("href");
+
+    if (!title || !link) {
+        return null;
+    }
+
+    let image = null;
+    if (config.image) {
+        const imageEl = $(config.image, element).first();
+        image = imageEl.attr("data-src") || imageEl.attr("src") || null;
+    }
+
+    const rawTime = config.time
+        ? normalizeSpace($(config.time, element).first().text())
+              .replace(/WIB/gi, "")
+              .replace(/\s+/g, " ")
+              .trim()
+        : "";
+
+    const time =
+        toTime(rawTime, LIST_TIME_FORMATS) ||
+        toTimeFromAgo(rawTime);
+
+    const linkTime = timeFromLink(link);
+    const hasClock = /\d{1,2}[:.]\d{2}/.test(rawTime);
+
+    return {
+        title: title,
+        image_thumbnail: image,
+        image_full: fullImage(image),
+        time: linkTime && (!time || !hasClock) ? linkTime : time,
+        link: absoluteUrl(link, base_url),
+        slug: buildSlug(link),
+    };
+}
+
+async function fetchListing(category) {
+    const cat = String(category || "").toLowerCase();
+
+    if (!cat) {
+        return fetchHtml(base_url);
+    }
+
+    const candidates = [`https://${cat}.kompas.com`, `${base_url}/${cat}`];
+    let lastError;
+
+    for (const url of candidates) {
+        try {
+            return await fetchHtml(url);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError;
+}
+
+async function getData(category) {
+    try {
+        const response = await fetchListing(category);
         const $ = cheerio.load(response.data);
-        let isi = $(".article__list.clearfix:not(.article__list--video)");
-        if (isi.length <= 0) {
-            type = 1;
-            isi = $(".article__wrap__grid--flex .article__grid");
-            if (isi.length <= 0) {
-                type = 2;
-                isi = $(".trenLatest__item.clearfix");
-                if (isi.length <= 0) {
-                    type = 3;
-                    isi = $(".articleList .articleItem");
-                    if (isi.length <= 0) {
-                        type = 4;
-                        isi = $(".wSpec-list .wSpec-item");
-                        
-                    }
-                }
-            }
 
+        // Different Kompas channels still use different card layouts.
+        const layouts = [
+            {
+                selector: ".article__list.clearfix:not(.article__list--video)",
+                config: {
+                    title: ".article__list__title h3 a",
+                    image: ".article__list__asset .article__asset a img",
+                    time: ".article__date",
+                },
+            },
+            {
+                selector: ".article__wrap__grid--flex .article__grid",
+                config: {
+                    title: ".article__box h3.article__title a",
+                    image: ".article__asset a img",
+                    time: ".article__date",
+                },
+            },
+            {
+                selector: ".trenLatest__item.clearfix",
+                config: {
+                    title: ".trenLatest__box h3.trenLatest__title a",
+                    image: ".trenLatest__img a img",
+                    time: ".tren__date",
+                },
+            },
+            {
+                selector: ".articleList .articleItem",
+                config: {
+                    title: ".articleTitle",
+                    image: ".articleItem-img img",
+                    time: ".articlePost-date",
+                    link: ".article-link",
+                },
+            },
+            {
+                selector: ".wSpec-list .wSpec-item",
+                config: {
+                    title: ".wSpec-title",
+                    image: ".wSpec-img img",
+                    time: ".wSpec-subtitle span",
+                    link: ".wSpec-item a",
+                },
+            },
+        ];
+
+        const result = [];
+        const seen = new Set();
+
+        for (const layout of layouts) {
+            const elements = $(layout.selector);
+            if (elements.length <= 0) continue;
+
+            elements.each((i, element) => {
+                const item = extractItem($, element, layout.config);
+                if (item && isArticleLink(item.link) && !seen.has(item.link)) {
+                    seen.add(item.link);
+                    result.push(item);
+                }
+            });
+
+            if (result.length > 0) break;
         }
 
-        console.log("type "+isi.length);
+        // Last resort: walk every article link on the page.
+        if (result.length <= 0) {
+            $('a[href*="/read/"]').each((i, element) => {
+                const href = $(element).attr("href");
+                if (!href) return;
+                if (!isArticleLink(href)) return;
 
-        isi.each((i, e) => {
-            if (type == 0) {
-                const p = parse1($, e);
-                if (p != null) {
-                    result.push(p);
-                }
-            } else if (type == 1) {
-                const p = parse2($, e);
-                if (p != null) {
-                    result.push(p);
-                }
-            } else if (type == 2) {
-                const p = parse3($, e);
-                if (p != null) {
-                    result.push(p);
-                }
-            } else if (type == 3) {
-                const p = parse4($, e);
-                if (p != null) {
-                    result.push(p);
-                }
-            } else if (type == 4) {
-                const p = parse5($, e);
-                if (p != null) {
-                    result.push(p);
-                }
-            }
-        });
+                const container = $(element).closest("div, article, li");
+                const title =
+                    normalizeSpace($(element).text()) ||
+                    normalizeSpace(container.find("h2, h3, h4, .articleTitle").first().text()) ||
+                    normalizeSpace(container.find("img").first().attr("alt"));
+
+                if (!title) return;
+
+                const imageEl = container.find("img").first();
+                const image = imageEl.attr("data-src") || imageEl.attr("src") || null;
+                const rawTime = normalizeSpace(
+                    container
+                        .find(".articlePost-date, .article__date, .article-date, time")
+                        .first()
+                        .text()
+                );
+
+                const link = absoluteUrl(href, base_url);
+                if (seen.has(link)) return;
+                seen.add(link);
+
+                const linkTime = timeFromLink(href);
+                const hasClock = /\d{1,2}[:.]\d{2}/.test(rawTime);
+                const time =
+                    (linkTime && (!hasClock) ? linkTime : null) ||
+                    toTime(rawTime, LIST_TIME_FORMATS) ||
+                    toTimeFromAgo(rawTime);
+
+                result.push({
+                    title: title,
+                    image_thumbnail: image,
+                    image_full: fullImage(image),
+                    time: time,
+                    link: link,
+                    slug: buildSlug(href),
+                });
+            });
+        }
+
+        if (result.length <= 0) {
+            return { error: { message: "Tidak ada berita yang bisa diparsing dari halaman Kompas" } };
+        }
+
+        return result;
     } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
 }
 
-function parse1($, e) {
-    const title = $('.article__list__title h3 a', e).text().replace("\n", "").trim();
-    let image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('data-src');
-    if (image_thumbnail == undefined) {
-        image_thumbnail = $('.article__list__asset .article__asset a img', e).attr('src');
+async function buildDetailUrl(category, slug) {
+    const cat = String(category || "www").toLowerCase();
+    const cleanSlug = String(slug || "").replace(/^\/+/, "");
+
+    if (cat === "www") {
+        return `https://www.kompas.com/${cleanSlug}`;
     }
 
-
-    if (title != "" && image_thumbnail != undefined) {
-
-        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-        var time = $('.article__date', e).text().trim().replace(" WIB", "");
-        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-        const link = $('.article__list__title h3 a', e).attr('href');
-        const _url = new URL(link);
-        if (_url.hostname !== "www.kompas.id") {
-            const _replace = "https://" + _url.hostname;
-            const _arr_hostname = _url.hostname.split(".");
-            let slug = (link != undefined) ? link.replace(_replace, "") : "";
-            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                slug = _arr_hostname[0] + slug;
-            } else if (slug.charAt(0) == "/") {
-                slug = slug.slice(1);
-            }
-
-
-            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-            return {
-                title: title,
-                image_thumbnail: image_thumbnail,
-                image_full: image_full,
-                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
-                link: link,
-                slug: slug
-            };
-
-        }
+    // These channels do not have their own subdomain.
+    if (cat === "global" || cat === "baca") {
+        return `https://www.kompas.com/${cat}/${cleanSlug}`;
     }
 
-    return null;
-}
-
-function parse2($, e) {
-    const title = $('.article__box h3.article__title a', e).text().replace("\n", "").trim();
-    let image_thumbnail = $('.article__asset a img', e).attr('data-src');
-    if (image_thumbnail == undefined) {
-        image_thumbnail = $('.article__asset a img', e).attr('src');
-    }
-
-
-    if (title != "" && image_thumbnail != undefined) {
-
-        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-        var time = $('.article__date', e).text().trim().replace(" WIB", "");
-        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-        const link = $('.article__box h3.article__title a', e).attr('href');
-        const _url = new URL(link);
-        if (_url.hostname !== "www.kompas.id") {
-            const _replace = "https://" + _url.hostname;
-            const _arr_hostname = _url.hostname.split(".");
-            let slug = (link != undefined) ? link.replace(_replace, "") : "";
-            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                slug = _arr_hostname[0] + slug;
-            } else if (slug.charAt(0) == "/") {
-                slug = slug.slice(1);
-            }
-
-
-            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-            return {
-                title: title,
-                image_thumbnail: image_thumbnail,
-                image_full: image_full,
-                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
-                link: link,
-                slug: slug
-            };
-
-        }
-    }
-
-    return null;
-}
-
-function parse3($, e) {
-    const title = $('.trenLatest__box h3.trenLatest__title a', e).text().replace("\n", "").trim();
-    let image_thumbnail = $('.trenLatest__img a img', e).attr('data-src');
-    if (image_thumbnail == undefined) {
-        image_thumbnail = $('.trenLatest__img a img', e).attr('src');
-    }
-
-
-    if (title != "" && image_thumbnail != undefined) {
-
-        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-        var time = $('.tren__date', e).text().trim().replace(" WIB", "");
-        // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-        // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-        const link = $('.trenLatest__box h3.trenLatest__title a', e).attr('href');
-        const _url = new URL(link);
-        if (_url.hostname !== "www.kompas.id") {
-            const _replace = "https://" + _url.hostname;
-            const _arr_hostname = _url.hostname.split(".");
-            let slug = (link != undefined) ? link.replace(_replace, "") : "";
-            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                slug = _arr_hostname[0] + slug;
-            } else if (slug.charAt(0) == "/") {
-                slug = slug.slice(1);
-            }
-
-
-            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-            return {
-                title: title,
-                image_thumbnail: image_thumbnail,
-                image_full: image_full,
-                time: moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm'),
-                link: link,
-                slug: slug
-            };
-
-        }
-    }
-
-    return null;
-}
-
-function parse4($, e) {
-    const title = $('.articleTitle', e).text().replace("\n", "").trim();
-    let image_thumbnail = $('.articleItem-img img', e).attr('data-src');
-    if (image_thumbnail == undefined) {
-        image_thumbnail = $('.articleItem-img img', e).attr('src');
-    }
-
-
-    if (title != "" && image_thumbnail != undefined) {
-
-        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-        var time = $('.articlePost-date', e).text().trim().replace(" WIB", "");
-        const link = $('.article-link', e).attr('href');
-        const _url = new URL(link);
-        if (_url.hostname !== "www.kompas.id") {
-            const _replace = "https://" + _url.hostname;
-            const _arr_hostname = _url.hostname.split(".");
-            let slug = (link != undefined) ? link.replace(_replace, "") : "";
-            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                slug = _arr_hostname[0] + slug;
-            } else if (slug.charAt(0) == "/") {
-                slug = slug.slice(1);
-            }
-
-
-            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-            return {
-                title: title,
-                image_thumbnail: image_thumbnail,
-                image_full: image_full,
-                time: time,
-                link: link,
-                slug: slug
-            };
-
-        }
-    }
-
-    return null;
-}
-
-function parse5($, e) {
-    const title = $('.wSpec-title', e).text().replace("\n", "").trim();
-    let image_thumbnail = $('.wSpec-img img', e).attr('data-src');
-    if (image_thumbnail == undefined) {
-        image_thumbnail = $('.wSpec-img img', e).attr('src');
-    }
-
-
-    if (title != "" && image_thumbnail != undefined) {
-
-        var image_full = image_thumbnail.replace(/crops.*data/, 'data').replace("crops", "");
-        var time = $('.wSpec-subtitle span', e).text().trim().replace(" WIB", "");
-        const link = $('.wSpec-item a', e).attr('href');
-        const _url = new URL(link);
-        if (_url.hostname !== "www.kompas.id") {
-            const _replace = "https://" + _url.hostname;
-            const _arr_hostname = _url.hostname.split(".");
-            let slug = (link != undefined) ? link.replace(_replace, "") : "";
-            if (_arr_hostname.length > 1 && _arr_hostname[0] != "www") {
-                slug = _arr_hostname[0] + slug;
-            } else if (slug.charAt(0) == "/") {
-                slug = slug.slice(1);
-            }
-
-
-            // let newTime = moment(time, 'YYYY-MM-DD hh:mm:ss').format('YYYY-MM-DD hh:mm');
-            return {
-                title: title,
-                image_thumbnail: image_thumbnail,
-                image_full: image_full,
-                time: getDateFromTimeAgo(time),
-                link: link,
-                slug: slug
-            };
-
-        }
-    }
-
-    return null;
+    return `https://${cat}.kompas.com/${cleanSlug}`;
 }
 
 async function getDetail(category, slug) {
-    const notSubdomain = [
-        'global','baca'
-    ];
-    let url = `https://${category.toLowerCase()}.kompas.com/${slug}?page=all`;
-    if(notSubdomain.includes(category.toLowerCase())){
-        url = `https://kompas.com/${category.toLowerCase()}/${slug}?page=all`;
-    }
-    // if (category.toLowerCase() == "baca") {
-    //     url = `https://kompas.com/${category.toLowerCase()}/${slug}?page=all`;
-    // }
+    const url = await buildDetailUrl(category, slug);
 
-    let result = {};
     try {
-        const response = await axios.get(url);
+        const response = await fetchHtml(url);
         const $ = cheerio.load(response.data);
-        const _element_article = $(".container.clearfix");
-        const title = $("h1.read__title", _element_article);
-        const content = $(".read__content", _element_article);
-        $("script", content).remove();
 
+        const title =
+            normalizeSpace($("h1.read__title").first().text()) ||
+            normalizeSpace($("h1").first().text()) ||
+            normalizeSpace($('meta[property="og:title"]').attr("content"));
 
-        const image = $('.cover-photo img', _element_article).attr('src').replace(/crops.*data/, 'data').replace("crops", "");
-        // var img_url = new URL(image);
-        // var search_params = img_url.searchParams;
-        // search_params.set('w', '1024');
-        // search_params.set('q', '100');
-        // img_url.search = search_params.toString();
-        // var image_full = img_url.toString();
+        let content = $(".read__content").first();
+        if (content.length <= 0) content = $("div[class*='read__content']").first();
+        if (content.length <= 0) content = $("article").first();
+        if (content.length <= 0) content = $("body");
 
-        const timeElement = $(".read__time", _element_article);
-        $("a", timeElement).remove();
-        const time = timeElement.text().trim().replace(" WIB", "").replace(" - ", "");
+        const medias = collectMedia($, content);
 
+        content.find("script, style, noscript").remove();
+        content
+            .find(
+                ".advertisement, .ads, .iklan, .baca-juga, .inner-link, .kompas-com-ads, .read__content__ads, [id^='div-gpt-ad']"
+            )
+            .remove();
+        content.find("iframe").remove();
 
-        let newTime = moment(time, "dd/MMMM/YYYY, hh:mm").format('YYYY-MM-DD hh:mm');
+        const jsonLd = readJsonLd($);
+        let theTime = jsonLd ? toTime(jsonLd.datePublished) : null;
 
-        let medias = [];
-        const embeds = $("iframe",content);
-        embeds.each((i, e) => {
-            const embed = $(e).attr('src');
-            medias.push({
-                type: 'embed',
-                url: embed
-            });
-        });
-        const imgs = $("img", content);
-        imgs.each((i, e) => {
-            const img = $(e).attr('src');
-            if ($(e).closest(".lihatjg").length <= 0) {
-                medias.push({
-                    type: 'image',
-                    url: img
-                });
-            }
+        if (!theTime) {
+            const timeElement = $(".read__time").first();
+            const timeClone = timeElement.clone();
+            timeClone.find("a").remove();
+            const rawTime = normalizeSpace(timeClone.text())
+                .replace(/^Kompas\.com\s*,?\s*/i, "")
+                .replace(/WIB/gi, "")
+                .replace(/\s+-\s+/g, " ");
+            theTime = toTime(rawTime, DETAIL_TIME_FORMATS);
+        }
 
-        });
-        const articles = $("article", content);
-        articles.each((i, e) => {
-            const article = $('a', e).attr('href');
-            medias.push({
-                type: 'article',
-                url: article
-            });
-        });
+        const image =
+            $('meta[property="og:image"]').attr("content") ||
+            fullImage($(".cover-photo img").first().attr("src")) ||
+            null;
 
-        result = {
-            'title': title.text().replace("\n", "").trim(),
-            'content': content.text().replace("\n", "").trim(),
-            'image': image,
-            'time': (newTime != "Invalid date")?newTime:time,
-            'media': medias
+        return {
+            original_url: url,
+            title: title,
+            content: normalizeSpace(content.text()),
+            image: image,
+            time: theTime || "-",
+            media: medias,
         };
-
     } catch (error) {
-
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
 }
 
 module.exports = {
     getData: getData,
-    getDetail: getDetail
+    getDetail: getDetail,
 };

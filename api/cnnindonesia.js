@@ -1,228 +1,166 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
-const moment = require('moment');
-moment.locale('id');
-
-
-function getDateFromTimeAgo(timeString) {
-    const timeAgo = { hours: 0, minutes: 0, seconds: 0 };
-
-    const secondsAgoMatches = timeString.match(/^(\d+) (detik? yang lalu)/);
-    const minutesAgoMatches = timeString.match(/^(\d+) (menit? yang lalu)/);
-    const hoursAgoMatches = timeString.match(/^(\d+) (jam? yang lalu)/);
-    const hoursAndMinutesAgoMatches = timeString.match(/^(\d+) (jam? dan) (\d+) (menit? yang lalu)/);
-
-    if (secondsAgoMatches) {
-        timeAgo.seconds = secondsAgoMatches[1];
-    }
-    if (minutesAgoMatches) {
-        timeAgo.minutes = minutesAgoMatches[1];
-    }
-    if (hoursAgoMatches) {
-        timeAgo.hours = hoursAgoMatches[1];
-    }
-    if (hoursAndMinutesAgoMatches) {
-        timeAgo.hours = hoursAndMinutesAgoMatches[1];
-        timeAgo.minutes = hoursAndMinutesAgoMatches[3];
-    }
-
-    return moment()
-        .subtract(timeAgo.seconds, 'seconds')
-        .subtract(timeAgo.minutes, 'minutes')
-        .subtract(timeAgo.hours, 'hours')
-        .format('YYYY-MM-DD hh:mm');
-
-}
-
-
+const {
+    normalizeSpace,
+    fetchHtml,
+    errorResult,
+    toTime,
+    readJsonLd,
+    collectMedia,
+    expandMonth,
+} = require("./helpers");
 
 const base_url = "https://www.cnnindonesia.com";
 
-async function getData(category) {
-    moment.locale('id');
-    const url = base_url + "/" + category.toLowerCase();
-    let result = [];
+function resizeImage(src) {
+    if (!src) return null;
     try {
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
-        const isi = $("div.nhl-list article.flex-grow");
+        const url = new URL(src);
+        url.searchParams.set("w", "1024");
+        url.searchParams.set("q", "100");
+        return url.toString();
+    } catch (e) {
+        return src;
+    }
+}
 
-        isi.each((i, e) => {
-            const tagA = $('a.flex ', e);
-            
-            if (tagA && tagA.attr('dtr-ttl')) {
-                const title = tagA.attr('dtr-ttl').replace("\n", "").trim();
-                const image_thumbnail = $('img', tagA).attr('src');
-                var url = new URL(image_thumbnail);
-                var search_params = url.searchParams;
-                search_params.set('w', '1024');
-                search_params.set('q', '100');
-                url.search = search_params.toString();
-                var image_full = url.toString();
-                
-                // var time = $('a .box_text .date', e).text().replace("•", "").trim();
-                // const description = $(e).children('div.mr140').children('div.txt-oev-3').text().replace("\n", "").trim();
-                // const time = $(e).children('div.mr140').children('.grey').children('time').attr('title');
-                const link = tagA.attr('href');
-                var time = link.split("/")[4].split("-")[0];
-                let newTime = moment(time, 'YYYYMMDDhh:mm:ss').format('YYYY-MM-DD hh:mm');
-                const slug = (link != undefined) ? link.replace(base_url, "") : "";
-                result.push({
-                    title: title,
-                    image_thumbnail: image_thumbnail,
-                    image_full: image_full,
-                    time: newTime,
-                    link: link,
-                    slug: slug
-                });
+function parseListItem($, element) {
+    const tagA = $("a.flex", element).first();
+    const title = normalizeSpace(tagA.attr("dtr-ttl") || tagA.text());
+    const link = tagA.attr("href");
+
+    if (!title || !link) {
+        return null;
+    }
+
+    const imageThumbnail = $("img", tagA).first().attr("src") || null;
+
+    // CNN article URLs embed the publish timestamp:
+    // /nasional/20261104201643-12-1423405/slug
+    const idMatch = link.match(/\/(\d{14})-\d+-\d+\//);
+    const time = idMatch ? toTime(idMatch[1], "YYYYMMDDHHmmss") : null;
+
+    return {
+        title: title,
+        image_thumbnail: imageThumbnail,
+        image_full: resizeImage(imageThumbnail),
+        time: time,
+        link: link,
+        slug: link.replace(base_url, ""),
+    };
+}
+
+async function getData(category) {
+    const cat = String(category || "").toLowerCase();
+    const url = cat ? `${base_url}/${cat}` : base_url;
+
+    try {
+        const response = await fetchHtml(url);
+        const $ = cheerio.load(response.data);
+
+        let items = $("div.nhl-list article.flex-grow");
+        if (items.length <= 0) items = $("article.flex-grow");
+        if (items.length <= 0) items = $(".nhl-list article");
+
+        const result = [];
+        const seen = new Set();
+
+        items.each((i, element) => {
+            const item = parseListItem($, element);
+            if (item && !seen.has(item.link)) {
+                seen.add(item.link);
+                result.push(item);
             }
         });
+
+        if (result.length <= 0) {
+            return { error: { message: "Tidak ada berita yang bisa diparsing dari halaman " + url } };
+        }
+
+        return result;
     } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
 }
 
 async function getDetail(slug) {
-    const url = base_url + "/" + slug + "?page=all";
-    console.log(url);
+    const cleanSlug = String(slug || "").replace(/^\/+/, "");
+    const url = `${base_url}/${cleanSlug}?page=all`;
 
-    const months = [
-        {
-            'short': 'Jan',
-            'long': 'Januari'
-        },
-        {
-            'short': 'Feb',
-            'long': 'Februari'
-        },
-        {
-            'short': 'Mar',
-            'long': 'Maret'
-        },
-        {
-            'short': 'Apr',
-            'long': 'April'
-        },
-        {
-            'short': 'Mei',
-            'long': 'Mei'
-        },
-        {
-            'short': 'Jun',
-            'long': 'Juni'
-        },
-        {
-            'short': 'Jul',
-            'long': 'Juli'
-        },
-        {
-            'short': 'Agu',
-            'long': 'Agustus'
-        },
-        {
-            'short': 'Sep',
-            'long': 'September'
-        },
-        {
-            'short': 'Okt',
-            'long': 'Oktober'
-        },
-        {
-            'short': 'Nov',
-            'long': 'November'
-        },
-        {
-            'short': 'Des',
-            'long': 'Desember'
-        }
-
-    ];
-
-    let result = {};
     try {
-        const response = await axios.get(url);
+        const response = await fetchHtml(url);
         const $ = cheerio.load(response.data);
-        const title = $("head title");
-        const content = $("div.detail-wrap.flex.gap-4.relative");
-        $("script", content).remove();
-        $("style", content).remove();
-        $(".paradetail", content).remove();
-        $(".detail_ads", content).remove();
-        $(".linksisip", content).remove();
-        $(".embed.videocnn", content).remove();
 
-        const image = $('.detail-image.my-5 img').attr('src');
-        var img_url = new URL(image);
-        var search_params = img_url.searchParams;
-        search_params.set('w', '1024');
-        search_params.set('q', '100');
-        img_url.search = search_params.toString();
-        var image_full = img_url.toString();
-       
-        const time = $("div.text-cnn_grey.text-sm.mb-4").text();
-        const timeArr = time.split(" ");
-        for (let i = 0; i < months.length; i++) {
-            const month = months[i];
-            if (month.short == timeArr[2]) {
-                timeArr[2] = month.long;
-            }
+        const title =
+            normalizeSpace($("h1").first().text()) ||
+            normalizeSpace($('meta[property="og:title"]').attr("content"));
+
+        let content = $(".detail-text").first();
+        if (content.length <= 0) content = $(".detail-wrap").first();
+        if (content.length <= 0) content = $(".detail__body").first();
+        if (content.length <= 0) content = $("body");
+
+        const medias = collectMedia($, content).filter(
+            (media) => !/\/icon-[^/]+\.(webp|png|svg)/i.test(media.url || "")
+        );
+
+        // CNN photo articles keep their gallery outside .detail-text.
+        const seenMedia = new Set(medias.map((media) => `${media.type}|${media.url}`));
+        $(".galery-foto-slider-thumb-swiper img").each((i, el) => {
+            const src = $(el).attr("data-src") || $(el).attr("src");
+            if (!src || /\/icon-[^/]+\./i.test(src)) return;
+            const url = resizeImage(src) || src;
+            const key = "image|" + url;
+            if (seenMedia.has(key)) return;
+            seenMedia.add(key);
+            medias.push({ type: "image", url: url });
+        });
+
+        content.find("script, style, noscript").remove();
+        content
+            .find(
+                ".daftar-isi, .paradetail, .detail_ads, .linksisip, .topiksisip, .end-of-article, " +
+                    ".sisip_embed_sosmed, .skybanner, .share-bottom-new, .embed.videocnn, " +
+                    ".advertisement, [id^='div-gpt-ad']"
+            )
+            .remove();
+        content.find("iframe").remove();
+
+        const jsonLd = readJsonLd($);
+        let theTime = jsonLd ? toTime(jsonLd.datePublished) : null;
+
+        if (!theTime) {
+            const rawTime = normalizeSpace(
+                $("div.text-cnn_grey.text-sm.mb-4").first().text()
+            ).replace(/WIB/gi, "");
+            const expanded = expandMonth(rawTime);
+            theTime = toTime(expanded, [
+                "dddd, DD MMMM YYYY HH:mm",
+                "dddd, D MMMM YYYY HH:mm",
+                "DD MMMM YYYY HH:mm",
+                "D MMMM YYYY HH:mm",
+            ]);
         }
 
-        const theTime = timeArr.join(" ").replace(" WIB", "");
-        let newTime = moment(time, 'dddd, DD MMMM YYYY hh:mm').format('YYYY-MM-DD hh:mm');
+        const image =
+            $('meta[property="og:image"]').attr("content") ||
+            $(".detail-image.my-5 img").first().attr("src") ||
+            $(".detail-image img").first().attr("src") ||
+            null;
 
-        let medias = [];
-        const embeds = $("iframe",content);
-        embeds.each((i, e) => {
-            const embed = $(e).attr('src');
-            medias.push({
-                type: 'embed',
-                url: embed
-            });
-        });
-        const imgs = $("img",content);
-        imgs.each((i, e) => {
-            const img = $(e).attr('src');
-            if($(e).closest(".lihatjg").length <= 0){
-                medias.push({
-                    type: 'image',
-                    url: img
-                });
-            }
-            
-        });
-        const articles = $("article",content);
-        articles.each((i, e) => {
-            const article = $('a',e).attr('href');
-            medias.push({
-                type: 'article',
-                url: article
-            });
-        });
-
-        result = {
-            'original_url':url,
-            'title': title.text().replace("\n", "").trim(),
-            'content': content.text().replace("\n", "").trim(),
-            'image': image_full,
-            'time': (newTime != "Invalid date")?newTime:theTime,
-            'media': medias
+        return {
+            original_url: url,
+            title: title,
+            content: normalizeSpace(content.text()),
+            image: image,
+            time: theTime || "-",
+            media: medias,
         };
-
     } catch (error) {
-        console.log(error);
-        result = {
-            'error': error
-        };
+        return errorResult(error);
     }
-    return result;
 }
 
 module.exports = {
     getData: getData,
-    getDetail: getDetail
+    getDetail: getDetail,
 };

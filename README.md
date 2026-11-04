@@ -99,6 +99,24 @@
 }
 ```
 
+## Format URL Detail
+
+Gunakan nilai `slug` dari response list, lalu gabungkan dengan prefix provider:
+
+| Provider | Contoh |
+| --- | --- |
+| Tribunnews | `/tribunnews/regional/7906894/aksi-demo-...` |
+| CNN Indonesia | `/cnnindonesia/nasional/20261104201643-12-1423405/sidang-militer-...` |
+| Tempo | `/tempo/nasional/read/129470/lewat-festival-film-...` |
+| Kompas | `/kompas/health/read/26K04094103168/kenapa-usia-30-tahun-...` |
+| Liputan 6 | `/liputan6/news/read/8328487/pramono-lantik-3418-pns-...` |
+
+Catatan:
+
+- Route detail Tribunnews mendukung format baru (`/<kanal>/<id>/<slug>`) dan format lama (`/<kanal>/<tahun>/<bulan>/<hari>/<slug>`).
+- Route detail Kompas mendukung ID panjang (`/read/2026/11/04/21093051/...`) dan ID pendek seperti kanal health (`/read/26K04094103168/...`).
+- Daftar berita Tempo diambil dari `api.tempo.co`. Jika halaman artikel Tempo diblokir Cloudflare, response detail tetap berisi metadata dari API dengan `"partial": true` dan field `note`.
+
 ## Support
 
 <a href="https://trakteer.id/bagood/tip" target="_blank"><img id="wse-buttons-preview" src="https://cdn.trakteer.id/images/embed/trbtn-red-1.png" height="40" style="border:0px;height:40px;" alt="Trakteer Saya"></a>
